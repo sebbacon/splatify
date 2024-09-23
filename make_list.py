@@ -146,7 +146,6 @@ def get_video_info(video_id):
             snippet = response["items"][0]["snippet"]
             return {
                 "title": snippet.get("title", ""),
-                "artist": snippet.get("channelTitle", ""),
             }
         else:
             print(f"No video found for ID: {video_id}")
@@ -161,7 +160,7 @@ def get_video_info(video_id):
 def search_spotify(video_info):
     if not video_info:
         return None
-    query = f"{video_info['title']} {video_info['artist']}"
+    query = f"{video_info['title']}"
     results = sp.search(q=query, type="track", limit=1)
     if results["tracks"]["items"]:
         return results["tracks"]["items"][0]["uri"]
@@ -228,14 +227,10 @@ def main():
                     date = datetime.fromtimestamp(float(timestamp)).strftime(
                         "%Y-%m-%d %H:%M:%S"
                     )
-                    print(
-                        f"Processed '{video_info['title']}' by {video_info['artist']}"
-                    )
+                    print(f"Processed '{video_info['title']}' ")
                     print(f"Original Slack message date: {date}")
                 else:
-                    print(
-                        f"Couldn't find a Spotify track for: {video_info['title']} by {video_info['artist']}"
-                    )
+                    print(f"Couldn't find a Spotify track for: {video_info['title']}")
             else:
                 print(f"Couldn't fetch video info for YouTube video ID: {video_id}")
                 print(f"Search text: {link}")

@@ -9,6 +9,7 @@ from urllib.parse import urlparse, parse_qs
 from datetime import datetime
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+import json
 
 # Load environment variables
 load_dotenv()
@@ -72,14 +73,16 @@ def join_channel(channel_id):
             print(f"Error joining channel: {e}")
 
 
-def extract_youtube_links(channel_id, oldest_timestamp=None):
+def extract_youtube_links(channel_id):
     youtube_links = []
     cursor = None
+    last_processed_timestamp = get_last_processed_timestamp()
+
     try:
         while True:
             result = slack_client.conversations_history(
                 channel=channel_id,
-                oldest=oldest_timestamp,
+                oldest=last_processed_timestamp,
                 cursor=cursor,
                 limit=1000,  # Maximum allowed by Slack API
             )
@@ -106,7 +109,7 @@ def extract_youtube_links(channel_id, oldest_timestamp=None):
             print("Bot is not in the channel. Attempting to join...")
             join_channel(channel_id)
             # If join_channel doesn't exit the script, try to extract links again
-            return extract_youtube_links(channel_id, oldest_timestamp)
+            return extract_youtube_links(channel_id)
     except Exception as e:
         print(f"Unexpected error: {e}")
 
@@ -159,11 +162,38 @@ def search_spotify(video_info):
     return None
 
 
+def is_track_in_playlist(track_uri):
+    playlist_tracks = sp.playlist_items(SPOTIFY_PLAYLIST_ID)
+    return any(item["track"]["uri"] == track_uri for item in playlist_tracks["items"])
+
+
 def add_to_playlist(track_uri):
-    track_info = sp.track(track_uri)
-    track_name = track_info["name"]
-    sp.playlist_add_items(SPOTIFY_PLAYLIST_ID, [track_uri])
-    print(f"Added '{track_name}' to Spotify playlist")
+    if is_track_in_playlist(track_uri):
+        track_info = sp.track(track_uri)
+        track_name = track_info["name"]
+        print(f"'{track_name}' is already in the Spotify playlist")
+    else:
+        track_info = sp.track(track_uri)
+        track_name = track_info["name"]
+        sp.playlist_add_items(SPOTIFY_PLAYLIST_ID, [track_uri])
+        print(f"Added '{track_name}' to Spotify playlist")
+
+
+def get_last_processed_timestamp():
+    try:
+        with open("last_processed.json", "r") as f:
+            data = json.load(f)
+            return data.get("last_processed_timestamp")
+    except FileNotFoundError:
+        # If the file doesn't exist, create it with the initial timestamp
+        initial_timestamp = "1727092800"  # 23 Sept 2024 12:00:00 UTC
+        save_last_processed_timestamp(initial_timestamp)
+        return initial_timestamp
+
+
+def save_last_processed_timestamp(timestamp):
+    with open("last_processed.json", "w") as f:
+        json.dump({"last_processed_timestamp": timestamp}, f)
 
 
 def main():
@@ -173,7 +203,14 @@ def main():
     youtube_links = extract_youtube_links(channel_id)
     print(f"Found {len(youtube_links)} YouTube links")
 
-    for link, timestamp in youtube_links:
+    processed_links = set()
+    last_processed_timestamp = None
+
+    for link, timestamp in sorted(youtube_links, key=lambda x: x[1], reverse=True):
+        if link in processed_links:
+            continue
+        processed_links.add(link)
+
         video_id = extract_video_id(link)
         if video_id:
             video_info = get_video_info(video_id)
@@ -185,7 +222,9 @@ def main():
                     date = datetime.fromtimestamp(float(timestamp)).strftime(
                         "%Y-%m-%d %H:%M:%S"
                     )
-                    print(f"Added '{video_info['title']}' by {video_info['artist']}")
+                    print(
+                        f"Processed '{video_info['title']}' by {video_info['artist']}"
+                    )
                     print(f"Original Slack message date: {date}")
                 else:
                     print(
@@ -196,6 +235,13 @@ def main():
                 print(f"Search text: {link}")
         else:
             print(f"Couldn't extract video ID from link: {link}")
+
+        if last_processed_timestamp is None:
+            last_processed_timestamp = timestamp
+
+    if last_processed_timestamp:
+        save_last_processed_timestamp(last_processed_timestamp)
+        print(f"Updated last processed timestamp to: {last_processed_timestamp}")
 
 
 if __name__ == "__main__":

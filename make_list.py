@@ -7,6 +7,8 @@ from spotipy.oauth2 import SpotifyOAuth
 import re
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 # Load environment variables
 load_dotenv()
@@ -31,6 +33,7 @@ required_vars = [
     "SPOTIPY_CLIENT_SECRET",
     "SPOTIPY_REDIRECT_URI",
     "SPOTIFY_PLAYLIST_ID",
+    "YOUTUBE_API_KEY",
 ]
 for var in required_vars:
     if not os.getenv(var):
@@ -86,7 +89,9 @@ def extract_youtube_links(channel_id, oldest_timestamp=None):
                     message["text"],
                 )
                 for link in links:
-                    youtube_links.append((link, message["ts"]))
+                    # Strip the '>' character from the end of the link if present
+                    cleaned_link = link.rstrip(">")
+                    youtube_links.append((cleaned_link, message["ts"]))
 
             if not result["has_more"]:
                 break
@@ -109,6 +114,8 @@ def extract_youtube_links(channel_id, oldest_timestamp=None):
 
 
 def extract_video_id(url):
+    # Remove any trailing pipe and additional content
+    url = url.split("|")[0]
     parsed_url = urlparse(url)
     if parsed_url.hostname == "youtu.be":
         return parsed_url.path.lstrip("/")
@@ -120,7 +127,32 @@ def extract_video_id(url):
     return None
 
 
-def search_spotify(query):
+def get_video_info(video_id):
+    youtube = build("youtube", "v3", developerKey=os.getenv("YOUTUBE_API_KEY"))
+    try:
+        request = youtube.videos().list(part="snippet", id=video_id)
+        response = request.execute()
+
+        if response["items"]:
+            snippet = response["items"][0]["snippet"]
+            return {
+                "title": snippet.get("title", ""),
+                "artist": snippet.get("channelTitle", ""),
+            }
+        else:
+            print(f"No video found for ID: {video_id}")
+            print(f"Search text: {video_id}")
+            return None
+    except HttpError as e:
+        print(f"An HTTP error {e.resp.status} occurred: {e.content}")
+        print(f"Search text: {video_id}")
+        return None
+
+
+def search_spotify(video_info):
+    if not video_info:
+        return None
+    query = f"{video_info['title']} {video_info['artist']}"
     results = sp.search(q=query, type="track", limit=1)
     if results["tracks"]["items"]:
         return results["tracks"]["items"][0]["uri"]
@@ -144,18 +176,26 @@ def main():
     for link, timestamp in youtube_links:
         video_id = extract_video_id(link)
         if video_id:
-            # Here you would typically use youtube-dl or a similar library to get video info
-            # For this example, we'll just use the video ID as the search query
-            spotify_uri = search_spotify(video_id)
-            if spotify_uri:
-                add_to_playlist(spotify_uri)
-                # Convert timestamp to readable date
-                date = datetime.fromtimestamp(float(timestamp)).strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                )
-                print(f"Original Slack message date: {date}")
+            video_info = get_video_info(video_id)
+            if video_info:
+                spotify_uri = search_spotify(video_info)
+                if spotify_uri:
+                    add_to_playlist(spotify_uri)
+                    # Convert timestamp to readable date
+                    date = datetime.fromtimestamp(float(timestamp)).strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                    print(f"Added '{video_info['title']}' by {video_info['artist']}")
+                    print(f"Original Slack message date: {date}")
+                else:
+                    print(
+                        f"Couldn't find a Spotify track for: {video_info['title']} by {video_info['artist']}"
+                    )
             else:
-                print(f"Couldn't find a Spotify track for YouTube video ID: {video_id}")
+                print(f"Couldn't fetch video info for YouTube video ID: {video_id}")
+                print(f"Search text: {link}")
+        else:
+            print(f"Couldn't extract video ID from link: {link}")
 
 
 if __name__ == "__main__":

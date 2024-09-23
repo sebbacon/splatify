@@ -2,3 +2,5 @@ spotipy
 slack_sdk
 python-dotenv
 black
+google-api-python-client
+aider-chat

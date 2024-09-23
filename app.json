@@ -1,0 +1,8 @@
+{
+    "cron": [
+      {
+        "command": "python make_list",
+        "schedule": "@daily"
+      }
+    ]
+  }

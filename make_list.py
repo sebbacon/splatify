@@ -50,6 +50,12 @@ sp = Spotify(
 )
 
 
+if "DOKKU_APP_TYPE" in os.environ:
+    STATE_JSON = "/app/data/last_processed.json"
+else:
+    STATE_JSON = "last_processed.json"
+
+
 def join_channel(channel_id):
     try:
         result = slack_client.conversations_join(channel=channel_id)
@@ -181,7 +187,7 @@ def add_to_playlist(track_uri):
 
 def get_last_processed_timestamp():
     try:
-        with open("last_processed.json", "r") as f:
+        with open(STATE_JSON, "r") as f:
             data = json.load(f)
             return data.get("last_processed_timestamp")
     except FileNotFoundError:
@@ -192,7 +198,7 @@ def get_last_processed_timestamp():
 
 
 def save_last_processed_timestamp(timestamp):
-    with open("last_processed.json", "w") as f:
+    with open(STATE_JSON, "w") as f:
         json.dump({"last_processed_timestamp": timestamp}, f)
 
 

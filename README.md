@@ -1,8 +1,10 @@
+A script which finds youtube links in a Slack channel, looks them up in Spotify, and adds them to a playlist.
+
 # Deployment
 
 Create an app:
 
-dokku apps:create splatify
+    dokku apps:create splatify
 
 Because this uses a cron job (see `app.json`), set up an email address for reports:
 

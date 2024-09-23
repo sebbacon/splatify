@@ -1,0 +1,4 @@
+spotipy
+slack_sdk
+python-dotenv
+black

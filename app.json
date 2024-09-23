@@ -1,7 +1,8 @@
 {
+    "name": "splatify",
     "cron": [
       {
-        "command": "python make_list",
+        "command": "python make_list.py",
         "schedule": "@daily"
       }
     ]
